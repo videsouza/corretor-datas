@@ -3,70 +3,123 @@ import pandas as pd
 import pdfplumber
 import re
 import io
-import time
 
-# --- CONFIGURAÇÃO DA PÁGINA (Deve ser o primeiro comando) ---
+# --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
     page_title="Validador de Eliminação Pro",
-    page_icon="🛡️",
+    page_icon="fas fa-cubes",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
-# --- ESTILIZAÇÃO CSS CUSTOMIZADA (PREMIUM LOOK) ---
+# --- CSS PERSONALIZADO (A MÁGICA DO DESIGN) ---
+# Aqui replicamos o estilo do seu arquivo HTML dentro do Streamlit
 st.markdown("""
     <style>
-        /* Fundo principal mais suave */
+        /* Importar fontes e ícones */
+        @import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap');
+        @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css');
+
+        /* Fundo Geral */
         .stApp {
-            background-color: #f8f9fa;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Segoe UI', sans-serif;
         }
-        /* Estilo dos Cards de Métricas */
-        div[data-testid="metric-container"] {
-            background-color: #ffffff;
+
+        /* Container Principal (Simulando o .container do HTML) */
+        .main-container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            margin: 20px auto;
+        }
+
+        /* Header Estilizado */
+        .header-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            border-radius: 15px;
+            text-align: center;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .header-box h1 { font-size: 32px; font-weight: 700; margin: 0; padding-bottom: 10px; }
+        .header-box p { opacity: 0.9; font-size: 16px; margin: 0; }
+
+        /* Cards (Upload e Resultados) */
+        .css-card {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            padding: 25px;
+            margin-bottom: 25px;
+            border: 1px solid #e2e8f0;
+        }
+        
+        /* Estilização dos Uploaders do Streamlit para parecerem a área pontilhada */
+        div[data-testid="stFileUploader"] {
+            border: 2px dashed #cbd5e0;
+            border-radius: 15px;
             padding: 20px;
-            border-radius: 10px;
+            background: #f8fafc;
+            text-align: center;
+        }
+        div[data-testid="stFileUploader"]:hover {
+            border-color: #667eea;
+            background: #eef2ff;
+        }
+
+        /* KPIs Customizados (Cards coloridos) */
+        .kpi-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            border-left: 5px solid #667eea;
             box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-            border: 1px solid #e0e0e0;
+            text-align: left;
         }
-        /* Estilo da Tabela */
-        div[data-testid="stDataFrame"] {
-            background-color: #ffffff;
-            padding: 10px;
-            border-radius: 10px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        }
-        /* Botão de Download em destaque */
+        .kpi-title { font-size: 12px; text-transform: uppercase; color: #64748b; font-weight: 700; }
+        .kpi-value { font-size: 28px; font-weight: 800; color: #1e293b; margin-top: 5px; }
+        
+        /* Botões */
         div.stButton > button {
-            width: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
             border-radius: 8px;
-            font-weight: bold;
+            font-weight: 600;
+            padding: 0.5rem 1rem;
+            width: 100%;
         }
-        /* Esconder menu padrão do Streamlit para ficar mais limpo */
+        div.stButton > button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+            color: white;
+        }
+
+        /* Remover elementos padrão do Streamlit */
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
+        header {visibility: hidden;}
     </style>
 """, unsafe_allow_html=True)
 
-# --- FUNÇÕES DE LÓGICA (Mantidas do original) ---
+# --- FUNÇÕES DE LÓGICA (BACKEND) ---
 
 def extract_data_from_pdf(pdf_file):
-    """Extrai dados do PDF usando a lógica de regex fornecida."""
     dados = []
-    
     with pdfplumber.open(pdf_file) as pdf:
         for page in pdf.pages:
             text = page.extract_text()
             if not text: continue
-            
             linhas = text.split('\n')
-            
             for linha in linhas:
                 match_codigo = re.match(r'^(\d\.\d\.\d{2}\.\d{2}\.\d{2})\s+', linha)
-                
                 if match_codigo:
                     codigo = match_codigo.group(1)
                     partes = linha.split()
-                    
                     anos_encontrados = []
                     for parte in partes:
                         if re.match(r'^(19|20)\d{2}$', parte):
@@ -115,15 +168,12 @@ def extract_data_from_pdf(pdf_file):
 def calcular_correto(row, regras_df):
     codigo = row['COD_PDF']
     espec = row['ESPEC_PDF']
-    
     regras_filtradas = regras_df[regras_df['COD'].astype(str) == codigo]
     
     if regras_filtradas.empty:
-        return "Código não encontrado na Tabela Excel", None, None
+        return "Código não encontrado no Excel", None, None
     
     regra_selecionada = None
-    
-    # Lógica Especial 2.0.10.00.01
     if codigo == '2.0.10.00.01':
         for _, regra in regras_filtradas.iterrows():
             espec_regra = str(regra['ESPEC']).upper()
@@ -132,12 +182,10 @@ def calcular_correto(row, regras_df):
                 break
         if regra_selecionada is None:
              regra_selecionada = regras_filtradas.iloc[0]
-             # Marcador silencioso, o status informará se houver erro
     else:
         regra_selecionada = regras_filtradas.iloc[0]
 
     prazo = regra_selecionada['ELIM']
-    
     try:
         anos_adicionar = int(prazo)
         calc_ini = row['LIMITE_INI'] + anos_adicionar
@@ -146,162 +194,117 @@ def calcular_correto(row, regras_df):
         status = "OK"
         if calc_ini != row['ELIM_PDF_INI'] or calc_fim != row['ELIM_PDF_FIM']:
             status = "ERRO"
-            
         return status, calc_ini, calc_fim
-        
     except ValueError:
         return f"Informativo: Prazo é '{prazo}'", None, None
 
-# --- SIDEBAR (Barra Lateral) ---
+# --- LAYOUT VISUAL ---
 
-with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/9543/9543962.png", width=60) # Ícone genérico
-    st.title("Painel de Controle")
-    st.markdown("---")
+# Wrapper branco centralizado (simulando .container do HTML)
+with st.container():
+    st.markdown('<div class="main-container">', unsafe_allow_html=True)
     
-    st.subheader("1. Arquivos de Entrada")
-    file_excel = st.file_uploader("📂 Tabela Temporalidade (Excel)", type=["xlsx", "xls"], help="Colunas obrigatórias: COD, ESPEC, ELIM")
-    file_pdf = st.file_uploader("📄 Relatório Eliminação (PDF)", type=["pdf"])
+    # 1. Header
+    st.markdown("""
+        <div class="header-box">
+            <h1><i class="fas fa-file-shield"></i> Verificador de Datas de Eliminação</h1>
+            <p>Auditoria automatizada de editais baseada na Tabela de Temporalidade</p>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # 2. Área de Upload (Estilo Card)
+    st.markdown('<div class="css-card"><h2>📂 Arquivos de Entrada</h2>', unsafe_allow_html=True)
     
-    st.markdown("---")
-    st.caption("Desenvolvido para validação automática de editais de eliminação de documentos.")
-    st.caption("Versão 2.0 (Premium)")
-
-# --- ÁREA PRINCIPAL ---
-
-st.title("🛡️ Auditoria de Datas de Eliminação")
-st.markdown("#### Sistema de Validação Cruzada (PDF vs Temporalidade)")
-
-if not file_excel or not file_pdf:
-    # Estado Inicial (Sem arquivos)
-    st.info("👋 Bem-vindo! Para começar, faça o upload dos arquivos no menu lateral à esquerda.")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("**1. Tabela Temporalidade (Excel)**")
+        file_excel = st.file_uploader("Arraste o Excel aqui (COD, ESPEC, ELIM)", type=["xlsx", "xls"], key="excel")
     
-    col_a, col_b, col_c = st.columns(3)
-    with col_a:
-        st.markdown("### 1️⃣ Upload")
-        st.write("Carregue a tabela de regras e o PDF do edital.")
-    with col_b:
-        st.markdown("### 2️⃣ Processamento")
-        st.write("O sistema cruza códigos e calcula datas automaticamente.")
-    with col_c:
-        st.markdown("### 3️⃣ Relatório")
-        st.write("Baixe uma planilha contendo apenas as divergências encontradas.")
+    with col2:
+        st.markdown("**2. Relatório de Eliminação (PDF)**")
+        file_pdf = st.file_uploader("Arraste o PDF aqui", type=["pdf"], key="pdf")
 
-else:
-    # Processamento
-    with st.status("Processando documentos...", expanded=True) as status:
-        # 1. Excel
-        st.write("Lendo Tabela de Temporalidade...")
-        try:
-            df_regras = pd.read_excel(file_excel)
-            cols_upper = [c.upper() for c in df_regras.columns]
-            df_regras.columns = cols_upper
-            if not all(col in df_regras.columns for col in ['COD', 'ESPEC', 'ELIM']):
-                st.error("O Excel precisa ter as colunas: COD, ESPEC, ELIM")
-                st.stop()
-        except Exception as e:
-            st.error(f"Erro no Excel: {e}")
-            st.stop()
-            
-        # 2. PDF
-        st.write("Extraindo dados do PDF (isso pode levar alguns segundos)...")
-        try:
-            df_pdf = extract_data_from_pdf(file_pdf)
-            if df_pdf.empty:
-                st.warning("Nenhum padrão de data reconhecido no PDF.")
-                st.stop()
-        except Exception as e:
-            st.error(f"Erro no PDF: {e}")
-            st.stop()
+    st.markdown('</div>', unsafe_allow_html=True) # Fecha Card Upload
 
-        # 3. Análise
-        st.write("Validando datas e calculando divergências...")
-        resultados = []
-        erros_count = 0
-        
-        # Barra de progresso visual
-        prog_bar = st.progress(0)
-        total = len(df_pdf)
-        
-        for idx, row in df_pdf.iterrows():
-            status_calc, c_ini, c_fim = calcular_correto(row, df_regras)
-            
-            if status_calc != "OK":
-                erros_count += 1
-                resultados.append({
-                    'CÓDIGO': row['COD_PDF'],
-                    'ESPECIFICAÇÃO (PDF)': row['ESPEC_PDF'],
-                    'LIMITE INICIAL': row['LIMITE_INI'],
-                    'LIMITE FINAL': row['LIMITE_FIM'],
-                    'ELIM PDF': f"{row['ELIM_PDF_INI']} a {row['ELIM_PDF_FIM']}",
-                    'STATUS': status_calc,
-                    'DATA CORRETA': f"{c_ini} a {c_fim}" if c_ini else "N/A"
-                })
-            prog_bar.progress((idx + 1) / total)
-            
-        status.update(label="Análise concluída!", state="complete", expanded=False)
+    # 3. Lógica e Resultados
+    if file_excel and file_pdf:
+        # Processamento (com spinner nativo, mas visual limpo)
+        with st.spinner("🔄 Cruzando dados e validando datas..."):
+            try:
+                # Ler Excel
+                df_regras = pd.read_excel(file_excel)
+                df_regras.columns = [c.upper() for c in df_regras.columns]
+                
+                # Ler PDF
+                df_pdf = extract_data_from_pdf(file_pdf)
+                
+                if df_pdf.empty:
+                    st.error("❌ Nenhum dado compatível encontrado no PDF.")
+                else:
+                    # Validar
+                    resultados = []
+                    erros_count = 0
+                    
+                    for idx, row in df_pdf.iterrows():
+                        status_calc, c_ini, c_fim = calcular_correto(row, df_regras)
+                        if status_calc != "OK":
+                            erros_count += 1
+                            resultados.append({
+                                'CÓDIGO': row['COD_PDF'],
+                                'ESPECIFICAÇÃO': row['ESPEC_PDF'],
+                                'LIMITE': f"{row['LIMITE_INI']} - {row['LIMITE_FIM']}",
+                                'NO PDF': f"{row['ELIM_PDF_INI']} - {row['ELIM_PDF_FIM']}",
+                                'STATUS': status_calc,
+                                'CORRETO': f"{c_ini} - {c_fim}" if c_ini else "N/A"
+                            })
+                    
+                    # 4. Dashboard de Resultados (Visual HTML)
+                    st.markdown('<div class="css-card"><h2>📊 Relatório da Análise</h2>', unsafe_allow_html=True)
+                    
+                    # KPIs em Grid HTML
+                    cor_borda = "#ef4444" if erros_count > 0 else "#10b981"
+                    texto_erro = "Atenção Requerida" if erros_count > 0 else "Tudo Certo"
+                    
+                    kpi_html = f"""
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 20px;">
+                        <div class="kpi-card" style="border-left-color: #667eea;">
+                            <div class="kpi-title">Total Analisado</div>
+                            <div class="kpi-value">{len(df_pdf)}</div>
+                        </div>
+                        <div class="kpi-card" style="border-left-color: {cor_borda};">
+                            <div class="kpi-title">Inconsistências</div>
+                            <div class="kpi-value">{erros_count}</div>
+                            <div style="font-size: 12px; color: {cor_borda}; font-weight: bold;">{texto_erro}</div>
+                        </div>
+                        <div class="kpi-card" style="border-left-color: #f59e0b;">
+                            <div class="kpi-title">Precisão</div>
+                            <div class="kpi-value">{((len(df_pdf)-erros_count)/len(df_pdf)*100):.1f}%</div>
+                        </div>
+                    </div>
+                    """
+                    st.markdown(kpi_html, unsafe_allow_html=True)
+                    
+                    # Tabela e Download
+                    if erros_count > 0:
+                        df_resultado = pd.DataFrame(resultados)
+                        st.dataframe(df_resultado, use_container_width=True)
+                        
+                        buffer = io.BytesIO()
+                        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                            df_resultado.to_excel(writer, index=False)
+                        
+                        st.download_button(
+                            label="📥 BAIXAR RELATÓRIO DE ERROS (EXCEL)",
+                            data=buffer,
+                            file_name="Datas_Incorretas.xlsx",
+                            mime="application/vnd.ms-excel"
+                        )
+                    else:
+                        st.success("✅ Tudo perfeito! O relatório PDF está 100% correto segundo a tabela.")
 
-    # --- DASHBOARD DE RESULTADOS ---
+                    st.markdown('</div>', unsafe_allow_html=True) # Fecha Card Resultados
+
+            except Exception as e:
+                st.error(f"Ocorreu um erro no processamento: {str(e)}")
     
-    st.divider()
-    
-    # KPIs (Métricas Principais)
-    kpi1, kpi2, kpi3 = st.columns(3)
-    
-    with kpi1:
-        st.metric("Documentos Analisados", f"{total}", delta="Processamento Completo")
-    
-    with kpi2:
-        if erros_count > 0:
-            st.metric("Inconsistências", f"{erros_count}", delta="-Atenção Requerida", delta_color="inverse")
-        else:
-            st.metric("Inconsistências", "0", delta="Perfeito", delta_color="normal")
-            
-    with kpi3:
-        taxa_sucesso = ((total - erros_count) / total) * 100
-        st.metric("Taxa de Precisão", f"{taxa_sucesso:.1f}%")
-
-    # Exibição dos Dados
-    if resultados:
-        st.subheader("⚠️ Detalhe das Divergências")
-        st.caption("Abaixo estão listados apenas os registros onde a data do PDF difere do cálculo esperado.")
-        
-        df_resultado = pd.DataFrame(resultados)
-        
-        # Colorir status
-        def color_status(val):
-            color = '#ffcdd2' if val == 'ERRO' else '#fff9c4'
-            return f'background-color: {color}'
-
-        st.dataframe(
-            df_resultado.style.applymap(color_status, subset=['STATUS']),
-            use_container_width=True,
-            hide_index=True
-        )
-        
-        # Área de Download
-        st.markdown("<br>", unsafe_allow_html=True)
-        col_download, col_vazia = st.columns([1, 2])
-        
-        with col_download:
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                df_resultado.to_excel(writer, index=False, sheet_name='Erros')
-                # Ajuste automático de colunas
-                worksheet = writer.sheets['Erros']
-                for i, col in enumerate(df_resultado.columns):
-                    column_len = max(df_resultado[col].astype(str).map(len).max(), len(col)) + 2
-                    worksheet.set_column(i, i, column_len)
-            
-            st.download_button(
-                label="📥 Baixar Relatório Corretivo (Excel)",
-                data=buffer,
-                file_name="Relatorio_Auditoria_Datas.xlsx",
-                mime="application/vnd.ms-excel",
-                type="primary" # Botão destacado
-            )
-            
-    else:
-        st.markdown("---")
-        st.success("✅ **Auditoria Aprovada:** Nenhuma divergência encontrada. Todas as datas de eliminação correspondem à tabela de temporalidade.")
-        st.balloons()
+    st.markdown('</div>', unsafe_allow_html=True) # Fecha Main Container
