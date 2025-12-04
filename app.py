@@ -3,17 +3,51 @@ import pandas as pd
 import pdfplumber
 import re
 import io
+import time
 
-# Configuração da página
-st.set_page_config(page_title="Verificador de Eliminação", layout="wide")
+# --- CONFIGURAÇÃO DA PÁGINA (Deve ser o primeiro comando) ---
+st.set_page_config(
+    page_title="Validador de Eliminação Pro",
+    page_icon="🛡️",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-st.title("🕵️ Verificador de Datas de Eliminação")
+# --- ESTILIZAÇÃO CSS CUSTOMIZADA (PREMIUM LOOK) ---
 st.markdown("""
-Esta ferramenta cruza dados de um Relatório PDF com uma Tabela de Temporalidade (Excel) 
-para validar se as datas de eliminação foram calculadas corretamente.
-""")
+    <style>
+        /* Fundo principal mais suave */
+        .stApp {
+            background-color: #f8f9fa;
+        }
+        /* Estilo dos Cards de Métricas */
+        div[data-testid="metric-container"] {
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            border: 1px solid #e0e0e0;
+        }
+        /* Estilo da Tabela */
+        div[data-testid="stDataFrame"] {
+            background-color: #ffffff;
+            padding: 10px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        /* Botão de Download em destaque */
+        div.stButton > button {
+            width: 100%;
+            border-radius: 8px;
+            font-weight: bold;
+        }
+        /* Esconder menu padrão do Streamlit para ficar mais limpo */
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+    </style>
+""", unsafe_allow_html=True)
 
-# --- FUNÇÕES DE LÓGICA ---
+# --- FUNÇÕES DE LÓGICA (Mantidas do original) ---
 
 def extract_data_from_pdf(pdf_file):
     """Extrai dados do PDF usando a lógica de regex fornecida."""
@@ -27,14 +61,12 @@ def extract_data_from_pdf(pdf_file):
             linhas = text.split('\n')
             
             for linha in linhas:
-                # Regex para capturar Código
                 match_codigo = re.match(r'^(\d\.\d\.\d{2}\.\d{2}\.\d{2})\s+', linha)
                 
                 if match_codigo:
                     codigo = match_codigo.group(1)
                     partes = linha.split()
                     
-                    # Encontrar anos (19xx ou 20xx)
                     anos_encontrados = []
                     for parte in partes:
                         if re.match(r'^(19|20)\d{2}$', parte):
@@ -45,34 +77,26 @@ def extract_data_from_pdf(pdf_file):
                     elim_prevista_ini = None
                     elim_prevista_fim = None
                     
-                    # Lógica de extração de intervalos baseada na presença de "ATÉ"
-                    # Simplificada para robustez: assume-se pares lógicos
                     linha_upper = linha.upper()
                     tem_ate = "ATÉ" in linha_upper
                     
                     if len(anos_encontrados) >= 2:
                         if tem_ate and len(anos_encontrados) >= 4:
-                            # 2010 ATÉ 2012 ... 2015 ATÉ 2017
                             data_limite_ini = anos_encontrados[0]
                             data_limite_fim = anos_encontrados[1]
                             elim_prevista_ini = anos_encontrados[2]
                             elim_prevista_fim = anos_encontrados[3]
                         elif tem_ate and len(anos_encontrados) >= 3:
-                             # Caso raro ou erro de leitura, tenta pegar o que der
                             data_limite_ini = anos_encontrados[0]
                             data_limite_fim = anos_encontrados[1]
                             elim_prevista_ini = anos_encontrados[2]
                             elim_prevista_fim = anos_encontrados[2]
                         elif not tem_ate and len(anos_encontrados) >= 2:
-                            # 2010 ... 2015 (Datas únicas)
                             data_limite_ini = anos_encontrados[0]
                             data_limite_fim = anos_encontrados[0]
                             elim_prevista_ini = anos_encontrados[1]
                             elim_prevista_fim = anos_encontrados[1]
 
-                    # Captura da Especificação (importante para o código 2.0.10.00.01)
-                    # Pega tudo que vem depois do código e antes dos anos, ou no final
-                    # Essa regex tenta capturar texto descritivo
                     obs_match = re.search(r'(SE -.*|EMEI.*|EMEF.*|IMI.*|NEI.*|CECOI.*|CENTRO.*|SECRETARIA.*)', linha)
                     especificacao = obs_match.group(1).strip() if obs_match else ""
 
@@ -89,11 +113,9 @@ def extract_data_from_pdf(pdf_file):
     return pd.DataFrame(dados)
 
 def calcular_correto(row, regras_df):
-    """Calcula a data correta baseada no Excel de regras."""
     codigo = row['COD_PDF']
     espec = row['ESPEC_PDF']
     
-    # Filtrar regra pelo código
     regras_filtradas = regras_df[regras_df['COD'].astype(str) == codigo]
     
     if regras_filtradas.empty:
@@ -101,30 +123,23 @@ def calcular_correto(row, regras_df):
     
     regra_selecionada = None
     
-    # Lógica Especial para 2.0.10.00.01
+    # Lógica Especial 2.0.10.00.01
     if codigo == '2.0.10.00.01':
-        # Tenta encontrar correspondência parcial na especificação
-        # Ex: Se Excel diz "Histórico Escolar" e PDF diz "EMEF x - Histórico Escolar"
         for _, regra in regras_filtradas.iterrows():
             espec_regra = str(regra['ESPEC']).upper()
             if espec_regra in espec.upper() or espec.upper() in espec_regra:
                 regra_selecionada = regra
                 break
-        # Se não achou match exato de texto, pega o primeiro ou avisa (aqui pegamos o primeiro por fallback)
         if regra_selecionada is None:
              regra_selecionada = regras_filtradas.iloc[0]
-             status_msg = "⚠ Código 2.0.10.00.01: Usada regra padrão (verificar especificação)"
+             # Marcador silencioso, o status informará se houver erro
     else:
-        # Pega a primeira ocorrência (assumindo códigos únicos exceto o caso acima)
         regra_selecionada = regras_filtradas.iloc[0]
 
     prazo = regra_selecionada['ELIM']
     
-    # Verifica se o prazo é numérico
     try:
         anos_adicionar = int(prazo)
-        
-        # Cálculo
         calc_ini = row['LIMITE_INI'] + anos_adicionar
         calc_fim = row['LIMITE_FIM'] + anos_adicionar
         
@@ -135,97 +150,158 @@ def calcular_correto(row, regras_df):
         return status, calc_ini, calc_fim
         
     except ValueError:
-        # Prazo não é número (ex: "PERMANENTE", "GUARDA", etc)
-        # Se for texto, a data de eliminação no PDF deveria ser igual ou refletir esse texto?
-        # A regra diz: "informe isto para o usuário".
         return f"Informativo: Prazo é '{prazo}'", None, None
 
-# --- INTERFACE ---
+# --- SIDEBAR (Barra Lateral) ---
 
-col1, col2 = st.columns(2)
-
-with col1:
-    st.subheader("1. Tabela de Regras (Excel)")
-    file_excel = st.file_uploader("Upload Excel (Colunas: COD, ESPEC, ELIM)", type=["xlsx", "xls"])
-
-with col2:
-    st.subheader("2. Relatório (PDF)")
-    file_pdf = st.file_uploader("Upload Relatório de Eliminação", type=["pdf"])
-
-if file_excel and file_pdf:
-    st.info("Processando arquivos...")
+with st.sidebar:
+    st.image("https://cdn-icons-png.flaticon.com/512/9543/9543962.png", width=60) # Ícone genérico
+    st.title("Painel de Controle")
+    st.markdown("---")
     
-    # 1. Carregar Excel
-    try:
-        df_regras = pd.read_excel(file_excel)
-        # Normalizar colunas
-        cols_upper = [c.upper() for c in df_regras.columns]
-        df_regras.columns = cols_upper
-        
-        # Verificar se as colunas existem
-        if not all(col in df_regras.columns for col in ['COD', 'ESPEC', 'ELIM']):
-            st.error("O Excel precisa ter as colunas: COD, ESPEC, ELIM")
+    st.subheader("1. Arquivos de Entrada")
+    file_excel = st.file_uploader("📂 Tabela Temporalidade (Excel)", type=["xlsx", "xls"], help="Colunas obrigatórias: COD, ESPEC, ELIM")
+    file_pdf = st.file_uploader("📄 Relatório Eliminação (PDF)", type=["pdf"])
+    
+    st.markdown("---")
+    st.caption("Desenvolvido para validação automática de editais de eliminação de documentos.")
+    st.caption("Versão 2.0 (Premium)")
+
+# --- ÁREA PRINCIPAL ---
+
+st.title("🛡️ Auditoria de Datas de Eliminação")
+st.markdown("#### Sistema de Validação Cruzada (PDF vs Temporalidade)")
+
+if not file_excel or not file_pdf:
+    # Estado Inicial (Sem arquivos)
+    st.info("👋 Bem-vindo! Para começar, faça o upload dos arquivos no menu lateral à esquerda.")
+    
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        st.markdown("### 1️⃣ Upload")
+        st.write("Carregue a tabela de regras e o PDF do edital.")
+    with col_b:
+        st.markdown("### 2️⃣ Processamento")
+        st.write("O sistema cruza códigos e calcula datas automaticamente.")
+    with col_c:
+        st.markdown("### 3️⃣ Relatório")
+        st.write("Baixe uma planilha contendo apenas as divergências encontradas.")
+
+else:
+    # Processamento
+    with st.status("Processando documentos...", expanded=True) as status:
+        # 1. Excel
+        st.write("Lendo Tabela de Temporalidade...")
+        try:
+            df_regras = pd.read_excel(file_excel)
+            cols_upper = [c.upper() for c in df_regras.columns]
+            df_regras.columns = cols_upper
+            if not all(col in df_regras.columns for col in ['COD', 'ESPEC', 'ELIM']):
+                st.error("O Excel precisa ter as colunas: COD, ESPEC, ELIM")
+                st.stop()
+        except Exception as e:
+            st.error(f"Erro no Excel: {e}")
             st.stop()
             
-    except Exception as e:
-        st.error(f"Erro ao ler Excel: {e}")
-        st.stop()
-
-    # 2. Processar PDF
-    try:
-        df_pdf = extract_data_from_pdf(file_pdf)
-        if df_pdf.empty:
-            st.warning("Nenhum dado encontrado no PDF com o padrão esperado.")
+        # 2. PDF
+        st.write("Extraindo dados do PDF (isso pode levar alguns segundos)...")
+        try:
+            df_pdf = extract_data_from_pdf(file_pdf)
+            if df_pdf.empty:
+                st.warning("Nenhum padrão de data reconhecido no PDF.")
+                st.stop()
+        except Exception as e:
+            st.error(f"Erro no PDF: {e}")
             st.stop()
-        else:
-            st.success(f"{len(df_pdf)} registros extraídos do PDF.")
-    except Exception as e:
-        st.error(f"Erro ao ler PDF: {e}")
-        st.stop()
 
-    # 3. Validação
-    resultados = []
-    
-    progress_bar = st.progress(0)
-    total_rows = len(df_pdf)
-    
-    for idx, row in df_pdf.iterrows():
-        status, correto_ini, correto_fim = calcular_correto(row, df_regras)
+        # 3. Análise
+        st.write("Validando datas e calculando divergências...")
+        resultados = []
+        erros_count = 0
         
-        # Adicionar ao relatório final apenas erros ou informativos
-        if status != "OK":
-            resultados.append({
-                'CÓDIGO': row['COD_PDF'],
-                'ESPECIFICAÇÃO (PDF)': row['ESPEC_PDF'],
-                'LIMITE INICIAL': row['LIMITE_INI'],
-                'LIMITE FINAL': row['LIMITE_FIM'],
-                'ELIMINAÇÃO NO PDF': f"{row['ELIM_PDF_INI']} a {row['ELIM_PDF_FIM']}",
-                'STATUS': status,
-                'DATA CORRETA ESPERADA': f"{correto_ini} a {correto_fim}" if correto_ini else "N/A"
-            })
+        # Barra de progresso visual
+        prog_bar = st.progress(0)
+        total = len(df_pdf)
         
-        progress_bar.progress((idx + 1) / total_rows)
+        for idx, row in df_pdf.iterrows():
+            status_calc, c_ini, c_fim = calcular_correto(row, df_regras)
+            
+            if status_calc != "OK":
+                erros_count += 1
+                resultados.append({
+                    'CÓDIGO': row['COD_PDF'],
+                    'ESPECIFICAÇÃO (PDF)': row['ESPEC_PDF'],
+                    'LIMITE INICIAL': row['LIMITE_INI'],
+                    'LIMITE FINAL': row['LIMITE_FIM'],
+                    'ELIM PDF': f"{row['ELIM_PDF_INI']} a {row['ELIM_PDF_FIM']}",
+                    'STATUS': status_calc,
+                    'DATA CORRETA': f"{c_ini} a {c_fim}" if c_ini else "N/A"
+                })
+            prog_bar.progress((idx + 1) / total)
+            
+        status.update(label="Análise concluída!", state="complete", expanded=False)
 
-    # 4. Exibição dos Resultados
+    # --- DASHBOARD DE RESULTADOS ---
+    
     st.divider()
-    st.subheader("Resultados da Análise")
     
+    # KPIs (Métricas Principais)
+    kpi1, kpi2, kpi3 = st.columns(3)
+    
+    with kpi1:
+        st.metric("Documentos Analisados", f"{total}", delta="Processamento Completo")
+    
+    with kpi2:
+        if erros_count > 0:
+            st.metric("Inconsistências", f"{erros_count}", delta="-Atenção Requerida", delta_color="inverse")
+        else:
+            st.metric("Inconsistências", "0", delta="Perfeito", delta_color="normal")
+            
+    with kpi3:
+        taxa_sucesso = ((total - erros_count) / total) * 100
+        st.metric("Taxa de Precisão", f"{taxa_sucesso:.1f}%")
+
+    # Exibição dos Dados
     if resultados:
+        st.subheader("⚠️ Detalhe das Divergências")
+        st.caption("Abaixo estão listados apenas os registros onde a data do PDF difere do cálculo esperado.")
+        
         df_resultado = pd.DataFrame(resultados)
         
-        # Estilizar tabela
-        st.dataframe(df_resultado, use_container_width=True)
-        
-        # Botão de download
-        buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-            df_resultado.to_excel(writer, index=False, sheet_name='Erros_Encontrados')
-            
-        st.download_button(
-            label="📥 Baixar Relatório de Erros (Excel)",
-            data=buffer,
-            file_name="Relatorio_Correcao_Datas.xlsx",
-            mime="application/vnd.ms-excel"
+        # Colorir status
+        def color_status(val):
+            color = '#ffcdd2' if val == 'ERRO' else '#fff9c4'
+            return f'background-color: {color}'
+
+        st.dataframe(
+            df_resultado.style.applymap(color_status, subset=['STATUS']),
+            use_container_width=True,
+            hide_index=True
         )
+        
+        # Área de Download
+        st.markdown("<br>", unsafe_allow_html=True)
+        col_download, col_vazia = st.columns([1, 2])
+        
+        with col_download:
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                df_resultado.to_excel(writer, index=False, sheet_name='Erros')
+                # Ajuste automático de colunas
+                worksheet = writer.sheets['Erros']
+                for i, col in enumerate(df_resultado.columns):
+                    column_len = max(df_resultado[col].astype(str).map(len).max(), len(col)) + 2
+                    worksheet.set_column(i, i, column_len)
+            
+            st.download_button(
+                label="📥 Baixar Relatório Corretivo (Excel)",
+                data=buffer,
+                file_name="Relatorio_Auditoria_Datas.xlsx",
+                mime="application/vnd.ms-excel",
+                type="primary" # Botão destacado
+            )
+            
     else:
-        st.success("✅ Parabéns! Nenhuma inconsistência encontrada. Todas as datas estão corretas.")
+        st.markdown("---")
+        st.success("✅ **Auditoria Aprovada:** Nenhuma divergência encontrada. Todas as datas de eliminação correspondem à tabela de temporalidade.")
+        st.balloons()
