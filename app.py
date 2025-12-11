@@ -150,7 +150,7 @@ def calcular_correto(row, regras_df):
         return status, calc_ini, calc_fim
         
     except ValueError:
-        return f"Informativo: Prazo é '{prazo}'", None, None
+        return f"OBSERVAÇÃO: '{prazo}'", None, None
 
 # --- SIDEBAR (Barra Lateral) ---
 
@@ -305,3 +305,4 @@ else:
         st.markdown("---")
         st.success("✅ **Auditoria Aprovada:** Nenhuma divergência encontrada. Todas as datas de eliminação correspondem à tabela de temporalidade.")
         st.balloons()
+
