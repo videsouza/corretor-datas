@@ -143,42 +143,22 @@ def extract_pdf_data(file):
                 if not text:
                     continue
                 
-                # --- LÓGICA ORIGINAL DE EXTRAÇÃO ---
-                # Procura linhas que contenham dados relevantes.
-                # Assumindo que o PDF tem estrutura de linhas com Box e Datas.
-                # A lógica abaixo tenta replicar o processamento linha a linha comum nesses casos.
-                
                 lines = text.split('\n')
-                current_box = None
                 
                 # Regex para capturar data no formato DD/MM/AAAA após "a partir de"
-                # (Mantida a lógica inferida do snippet original)
                 date_pattern = re.compile(r'a partir de\s*(\d{2}/\d{2}/\d{4})', re.IGNORECASE)
                 
-                # Regex genérica para capturar Box (Adaptar se necessário conforme a lógica exata original)
-                # Assumindo que busca algo como "Box 123" ou apenas números no início da linha
-                # Se a lógica original for complexa, ela estaria aqui. 
-                # Vou usar uma extração genérica baseada em padrões comuns de editais.
-                
                 for line in lines:
-                    # Tenta encontrar a data de eliminação
                     date_match = date_pattern.search(line)
                     
                     if date_match:
                         date_str = date_match.group(1)
-                        
-                        # Tenta encontrar o identificador do Box na mesma linha ou contexto
-                        # Aqui mantemos simples: procura números isolados ou padrões de caixa
-                        # Se não tiver a lógica exata de extração do ID da caixa no snippet,
-                        # usaremos uma busca por números na linha.
-                        # Exemplo: "Caixa 10 ... a partir de 01/01/2020"
-                        
-                        # Procura o primeiro número que aparece na linha (lógica comum)
+                        # Procura o primeiro número que aparece na linha (lógica comum para ID de Box)
                         box_match = re.search(r'\b(\d+)\b', line)
                         if box_match:
                             box_id = box_match.group(1)
                             extracted_data.append({
-                                'BOX_PDF': box_id, # Normaliza como string
+                                'BOX_PDF': box_id,
                                 'DATA_EDITAL': date_str,
                                 'PAGINA': i + 1
                             })
@@ -192,46 +172,52 @@ def extract_pdf_data(file):
 def validate_dates(df_base, df_pdf):
     """
     Cruza as informações do Excel com o PDF.
-    Mantém a lógica de comparação.
+    CORREÇÃO: Garante que a coluna STATUS sempre exista.
     """
-    # Normalização para garantir o merge (converte para string e remove espaços)
+    # 1. Normalização da Base
     if 'BOX' in df_base.columns:
         df_base['BOX'] = df_base['BOX'].astype(str).str.strip()
-    
-    if not df_pdf.empty and 'BOX_PDF' in df_pdf.columns:
-        df_pdf['BOX_PDF'] = df_pdf['BOX_PDF'].astype(str).str.strip()
-        
-        # Merge (Cruzamento)
-        # Left join para manter todos da base e ver o que achou no PDF
-        df_merged = pd.merge(
-            df_base, 
-            df_pdf, 
-            left_on='BOX', 
-            right_on='BOX_PDF', 
-            how='left'
-        )
-        
-        # Lógica de Validação (STATUS)
-        def check_status(row):
-            if pd.isna(row['BOX_PDF']):
-                return 'NÃO ENCONTRADO NO EDITAL'
-            
-            # Aqui entraria a lógica de comparação de datas se houver uma coluna de data no Excel
-            # Ex: if row['DATA_BASE'] < row['DATA_EDITAL']: return 'ERRO DE DATA'
-            
-            return 'VALIDADO'
+    else:
+        # Se não tiver coluna BOX no Excel, cria erro global
+        df_base['STATUS'] = 'ERRO: COLUNA "BOX" INEXISTENTE NO EXCEL'
+        return df_base
 
-        df_merged['STATUS'] = df_merged.apply(check_status, axis=1)
-        
-        # Reorganiza colunas para o output
-        cols = ['BOX', 'STATUS', 'DATA_EDITAL', 'PAGINA']
-        # Adiciona outras colunas do excel original se existirem
-        other_cols = [c for c in df_merged.columns if c not in cols and c != 'BOX_PDF']
-        final_cols = cols + other_cols
-        
-        return df_merged[final_cols]
+    # 2. Verificação do PDF
+    # Se o PDF extraído estiver vazio ou sem a coluna correta
+    if df_pdf.empty or 'BOX_PDF' not in df_pdf.columns:
+        df_base['STATUS'] = 'NÃO VERIFICADO (PDF VAZIO/ILEGÍVEL)'
+        df_base['DATA_EDITAL'] = '-'
+        df_base['PAGINA'] = '-'
+        return df_base
+
+    # 3. Normalização do PDF e Cruzamento
+    df_pdf['BOX_PDF'] = df_pdf['BOX_PDF'].astype(str).str.strip()
     
-    return df_base
+    # Left join para manter todos da base
+    df_merged = pd.merge(
+        df_base, 
+        df_pdf, 
+        left_on='BOX', 
+        right_on='BOX_PDF', 
+        how='left'
+    )
+    
+    # 4. Lógica de Validação (STATUS)
+    def check_status(row):
+        if pd.isna(row['BOX_PDF']):
+            return 'NÃO ENCONTRADO NO EDITAL'
+        # Se encontrou no PDF, considera validado (ou adicione lógica de data aqui)
+        return 'VALIDADO'
+
+    df_merged['STATUS'] = df_merged.apply(check_status, axis=1)
+    
+    # Reorganiza colunas para o output
+    cols = ['BOX', 'STATUS', 'DATA_EDITAL', 'PAGINA']
+    # Adiciona outras colunas do excel original se existirem
+    other_cols = [c for c in df_merged.columns if c not in cols and c != 'BOX_PDF']
+    final_cols = cols + other_cols
+    
+    return df_merged[final_cols]
 
 # --- 4. INTERFACE PRINCIPAL ---
 
@@ -257,7 +243,7 @@ def main():
         st.markdown("---")
         st.markdown("**Instruções:**")
         st.markdown("1. O Excel deve conter a coluna **BOX**.")
-        st.markdown("2. O PDF deve conter o padrão *'a partir de DD/MM/AAAA'*.")
+        st.markdown("2. O PDF deve ser legível (texto selecionável) e conter *'a partir de DD/MM/AAAA'*.")
 
     # Corpo Principal
     if uploaded_excel and uploaded_pdf:
@@ -279,6 +265,10 @@ def main():
                 st.markdown("### Resultado da Auditoria")
                 col1, col2, col3 = st.columns(3)
                 
+                # Garante que não quebre se a coluna STATUS não existir (fallback extra)
+                if 'STATUS' not in df_resultado.columns:
+                     df_resultado['STATUS'] = 'ERRO DESCONHECIDO'
+
                 total = len(df_resultado)
                 encontrados = len(df_resultado[df_resultado['STATUS'] == 'VALIDADO'])
                 erros = total - encontrados
@@ -291,12 +281,12 @@ def main():
                 def color_status(val):
                     if val == 'VALIDADO':
                         return 'background-color: #d1fae5; color: #065f46; font-weight: bold' # Verde Suave
-                    elif val == 'NÃO ENCONTRADO NO EDITAL':
+                    elif 'ERRO' in str(val) or 'NÃO' in str(val):
                         return 'background-color: #fee2e2; color: #991b1b; font-weight: bold' # Vermelho Suave
                     return ''
 
                 st.dataframe(
-                    df_resultado.style.applymap(color_status, subset=['STATUS']),
+                    df_resultado.style.map(color_status, subset=['STATUS']),
                     use_container_width=True,
                     hide_index=True
                 )
@@ -311,7 +301,10 @@ def main():
                     worksheet = writer.sheets['Auditoria']
                     for i, col in enumerate(df_resultado.columns):
                         # Tamanho aproximado da coluna
-                        column_len = max(df_resultado[col].astype(str).map(len).max(), len(col)) + 2
+                        try:
+                            column_len = max(df_resultado[col].astype(str).map(len).max(), len(col)) + 2
+                        except:
+                            column_len = 15
                         worksheet.set_column(i, i, column_len)
                 
                 st.download_button(
