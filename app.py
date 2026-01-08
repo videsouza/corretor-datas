@@ -5,211 +5,304 @@ import re
 import io
 import time
 
-# --- 1. CONFIGURAÇÃO DA PÁGINA ---
+# --- CONFIGURAÇÃO DA PÁGINA (Deve ser o primeiro comando) ---
 st.set_page_config(
-    page_title="Validador de Eliminação | Padrão GOV.BR",
-    page_icon="🏛️",
+    page_title="Validador de Eliminação Pro",
+    page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- 2. ESTILIZAÇÃO (DESIGN SYSTEM GOV.BR) ---
-def apply_gov_style():
-    st.markdown("""
-        <style>
-            @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&display=swap');
-            html, body, [class*="css"] { font-family: 'Roboto', sans-serif; }
-            .stApp { background-color: #f8f8f8; }
-            .gov-header {
-                background: linear-gradient(90deg, #0c326f 0%, #1351b4 100%);
-                padding: 1rem 2rem; border-radius: 0 0 4px 4px; color: white; margin-bottom: 2rem;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }
-            .gov-header h1 { font-size: 1.5rem; font-weight: 700; margin: 0; color: white !important; }
-            .gov-header p { font-size: 0.9rem; opacity: 0.9; margin: 0; font-weight: 300; }
-            section[data-testid="stSidebar"] { background-color: #ffffff; border-right: 1px solid #e5e5e5; }
-            div[data-testid="metric-container"] {
-                background-color: #ffffff; padding: 15px; border-radius: 4px; border: 1px solid #e5e5e5;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center;
-            }
-            div.stButton > button {
-                background-color: #1351b4; color: white; border: none; border-radius: 4px;
-                font-weight: 700; text-transform: uppercase; padding: 0.5rem 1rem; width: 100%;
-                transition: all 0.3s ease;
-            }
-            div.stButton > button:hover { background-color: #0c326f; }
-            div[data-testid="stDataFrame"] { background-color: white; padding: 10px; border-radius: 4px; border: 1px solid #e5e5e5; }
-        </style>
-    """, unsafe_allow_html=True)
+# --- ESTILIZAÇÃO CSS CUSTOMIZADA (PREMIUM LOOK) ---
+st.markdown("""
+    <style>
+        /* Fundo principal mais suave */
+        .stApp {
+            background-color: #f8f9fa;
+        }
+        /* Estilo dos Cards de Métricas */
+        div[data-testid="metric-container"] {
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            border: 1px solid #e0e0e0;
+        }
+        /* Estilo da Tabela */
+        div[data-testid="stDataFrame"] {
+            background-color: #ffffff;
+            padding: 10px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        /* Botão de Download em destaque */
+        div.stButton > button {
+            width: 100%;
+            border-radius: 8px;
+            font-weight: bold;
+        }
+        /* Esconder menu padrão do Streamlit para ficar mais limpo */
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+    </style>
+""", unsafe_allow_html=True)
 
-# --- 3. FUNÇÕES DE LÓGICA ---
+# --- FUNÇÕES DE LÓGICA (Mantidas do original) ---
 
-@st.cache_data(show_spinner=False)
-def load_excel_data(file):
-    try:
-        return pd.read_excel(file)
-    except Exception as e:
-        st.error(f"Erro ao ler Excel: {e}")
-        return None
-
-@st.cache_data(show_spinner=False)
-def extract_pdf_data(file):
-    extracted_data = []
-    try:
-        with pdfplumber.open(file) as pdf:
-            for i, page in enumerate(pdf.pages):
-                text = page.extract_text()
-                if not text: continue
-                
-                lines = text.split('\n')
-                # Regex para capturar data (DD/MM/AAAA) após "a partir de"
-                date_pattern = re.compile(r'a partir de\s*(\d{2}/\d{2}/\d{4})', re.IGNORECASE)
-                
-                for line in lines:
-                    date_match = date_pattern.search(line)
-                    if date_match:
-                        date_str = date_match.group(1)
-                        # Procura o primeiro número que aparece na linha (Identificador/Box)
-                        # Ajuste conforme necessidade se o ID for mais complexo
-                        box_match = re.search(r'\b(\d+)\b', line)
-                        if box_match:
-                            box_id = box_match.group(1)
-                            extracted_data.append({
-                                'ID_PDF': box_id,
-                                'DATA_EDITAL': date_str,
-                                'PAGINA': i + 1
-                            })
-    except Exception as e:
-        st.error(f"Erro ao processar PDF: {e}")
-        return []
-        
-    return pd.DataFrame(extracted_data)
-
-def validate_dates(df_base, df_pdf):
-    # 1. Identificar a coluna chave no Excel (COD)
-    col_chave = 'COD'
+def extract_data_from_pdf(pdf_file):
+    """Extrai dados do PDF usando a lógica de regex fornecida."""
+    dados = []
     
-    if col_chave not in df_base.columns:
-        # Tenta fallback se COD não existir, mas avisa erro
-        if 'BOX' in df_base.columns: col_chave = 'BOX'
-        else:
-            df_base['STATUS'] = f'ERRO: COLUNA "{col_chave}" NÃO ENCONTRADA'
-            return df_base
-
-    # Normalizar Excel
-    df_base[col_chave] = df_base[col_chave].astype(str).str.strip()
-
-    # 2. Verificar PDF
-    if df_pdf.empty or 'ID_PDF' not in df_pdf.columns:
-        df_base['STATUS'] = 'NÃO VERIFICADO (PDF VAZIO)'
-        return df_base
-
-    # Normalizar PDF
-    df_pdf['ID_PDF'] = df_pdf['ID_PDF'].astype(str).str.strip()
-    
-    # 3. Cruzamento (Merge)
-    # Usa 'COD' do Excel e 'ID_PDF' do PDF
-    df_merged = pd.merge(
-        df_base, 
-        df_pdf, 
-        left_on=col_chave, 
-        right_on='ID_PDF', 
-        how='left'
-    )
-    
-    # 4. Definir Status
-    def check_status(row):
-        if pd.isna(row['ID_PDF']):
-            return 'NÃO ENCONTRADO NO EDITAL'
-        # Aqui você pode adicionar lógica extra: comparar row['ELIM'] com row['DATA_EDITAL']
-        return 'VALIDADO'
-
-    df_merged['STATUS'] = df_merged.apply(check_status, axis=1)
-    
-    # 5. Limpeza de colunas para exibição
-    # Colunas prioritárias
-    cols_order = [col_chave, 'ESPEC', 'ELIM', 'STATUS', 'DATA_EDITAL', 'PAGINA']
-    
-    # Filtra apenas as que existem
-    final_cols = [c for c in cols_order if c in df_merged.columns]
-    
-    # Adiciona o restante que sobrar
-    remaining = [c for c in df_merged.columns if c not in final_cols and c != 'ID_PDF']
-    
-    return df_merged[final_cols + remaining]
-
-# --- 4. INTERFACE ---
-
-def main():
-    apply_gov_style()
-    
-    st.markdown("""
-        <div class="gov-header">
-            <h1>Validador de Eliminação</h1>
-            <p>Auditoria de Editais e Bases de Dados Arquivísticos</p>
-        </div>
-    """, unsafe_allow_html=True)
-
-    with st.sidebar:
-        st.header("Entrada de Dados")
-        st.info("Carregue os arquivos para iniciar.")
-        uploaded_excel = st.file_uploader("1. Base de Dados (Excel)", type=['xlsx', 'xls'])
-        uploaded_pdf = st.file_uploader("2. Edital de Eliminação (PDF)", type=['pdf'])
-        st.markdown("---")
-        st.markdown("**Requisitos:**")
-        st.markdown(f"- Excel deve ter: **COD**, **ESPEC**, **ELIM**")
-        st.markdown("- PDF: Texto selecionável ('a partir de...')")
-
-    if uploaded_excel and uploaded_pdf:
-        if st.button("Executar Validação", type="primary"):
-            with st.spinner("Lendo Excel..."):
-                df_base = load_excel_data(uploaded_excel)
-            with st.spinner("Lendo PDF..."):
-                df_pdf = extract_pdf_data(uploaded_pdf)
+    with pdfplumber.open(pdf_file) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text()
+            if not text: continue
             
-            if df_base is not None:
-                with st.spinner("Validando..."):
-                    df_resultado = validate_dates(df_base, df_pdf)
+            linhas = text.split('\n')
+            
+            for linha in linhas:
+                match_codigo = re.match(r'^(\d\.\d\.\d{2}\.\d{2}\.\d{2})\s+', linha)
                 
-                # Métricas
-                st.markdown("### Resultado")
-                col1, col2, col3 = st.columns(3)
-                
-                # Garante coluna STATUS
-                if 'STATUS' not in df_resultado.columns: df_resultado['STATUS'] = 'ERRO'
+                if match_codigo:
+                    codigo = match_codigo.group(1)
+                    partes = linha.split()
+                    
+                    anos_encontrados = []
+                    for parte in partes:
+                        if re.match(r'^(19|20)\d{2}$', parte):
+                            anos_encontrados.append(int(parte))
+                    
+                    data_limite_ini = None
+                    data_limite_fim = None
+                    elim_prevista_ini = None
+                    elim_prevista_fim = None
+                    
+                    linha_upper = linha.upper()
+                    tem_ate = "ATÉ" in linha_upper
+                    
+                    if len(anos_encontrados) >= 2:
+                        if tem_ate and len(anos_encontrados) >= 4:
+                            data_limite_ini = anos_encontrados[0]
+                            data_limite_fim = anos_encontrados[1]
+                            elim_prevista_ini = anos_encontrados[2]
+                            elim_prevista_fim = anos_encontrados[3]
+                        elif tem_ate and len(anos_encontrados) >= 3:
+                            data_limite_ini = anos_encontrados[0]
+                            data_limite_fim = anos_encontrados[1]
+                            elim_prevista_ini = anos_encontrados[2]
+                            elim_prevista_fim = anos_encontrados[2]
+                        elif not tem_ate and len(anos_encontrados) >= 2:
+                            data_limite_ini = anos_encontrados[0]
+                            data_limite_fim = anos_encontrados[0]
+                            elim_prevista_ini = anos_encontrados[1]
+                            elim_prevista_fim = anos_encontrados[1]
 
-                total = len(df_resultado)
-                ok = len(df_resultado[df_resultado['STATUS'] == 'VALIDADO'])
-                erro = total - ok
-                
-                col1.metric("Itens Analisados", total)
-                col2.metric("Validados", ok)
-                col3.metric("Não Encontrados / Erros", erro, delta_color="inverse")
-                
-                # Tabela
-                def color_row(val):
-                    if val == 'VALIDADO': return 'background-color: #d1fae5; color: #065f46; font-weight: bold'
-                    return 'background-color: #fee2e2; color: #991b1b; font-weight: bold'
+                    obs_match = re.search(r'(SE -.*|EMEI.*|EMEF.*|IMI.*|NEI.*|CECOI.*|CENTRO.*|SECRETARIA.*)', linha)
+                    especificacao = obs_match.group(1).strip() if obs_match else ""
 
-                st.dataframe(
-                    df_resultado.style.map(color_row, subset=['STATUS']),
-                    use_container_width=True, hide_index=True
-                )
-                
-                # Download
-                st.markdown("<br>", unsafe_allow_html=True)
-                buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                    df_resultado.to_excel(writer, index=False, sheet_name='Auditoria')
-                    worksheet = writer.sheets['Auditoria']
-                    for i, col in enumerate(df_resultado.columns):
-                        try: width = max(df_resultado[col].astype(str).map(len).max(), len(col)) + 2
-                        except: width = 15
-                        worksheet.set_column(i, i, width)
-                
-                st.download_button("📥 Baixar Relatório (.xlsx)", buffer, "Relatorio_Validacao.xlsx", "application/vnd.ms-excel")
+                    if elim_prevista_ini:
+                        dados.append({
+                            'COD_PDF': codigo,
+                            'ESPEC_PDF': especificacao,
+                            'LIMITE_INI': data_limite_ini,
+                            'LIMITE_FIM': data_limite_fim,
+                            'ELIM_PDF_INI': elim_prevista_ini,
+                            'ELIM_PDF_FIM': elim_prevista_fim,
+                            'LINHA_ORIGINAL': linha
+                        })
+    return pd.DataFrame(dados)
+
+def calcular_correto(row, regras_df):
+    codigo = row['COD_PDF']
+    espec = row['ESPEC_PDF']
+    
+    regras_filtradas = regras_df[regras_df['COD'].astype(str) == codigo]
+    
+    if regras_filtradas.empty:
+        return "Código não encontrado na Tabela Excel", None, None
+    
+    regra_selecionada = None
+    
+    # Lógica Especial 2.0.10.00.01
+    if codigo == '2.0.10.00.01':
+        for _, regra in regras_filtradas.iterrows():
+            espec_regra = str(regra['ESPEC']).upper()
+            if espec_regra in espec.upper() or espec.upper() in espec_regra:
+                regra_selecionada = regra
+                break
+        if regra_selecionada is None:
+             regra_selecionada = regras_filtradas.iloc[0]
+             # Marcador silencioso, o status informará se houver erro
     else:
-        st.markdown("<div style='text-align:center; padding:50px; color:#666;'><h3>Aguardando Arquivos</h3></div>", unsafe_allow_html=True)
+        regra_selecionada = regras_filtradas.iloc[0]
 
-if __name__ == "__main__":
-    main()
+    prazo = regra_selecionada['ELIM']
+    
+    try:
+        anos_adicionar = int(prazo)
+        calc_ini = row['LIMITE_INI'] + anos_adicionar
+        calc_fim = row['LIMITE_FIM'] + anos_adicionar
+        
+        status = "OK"
+        if calc_ini != row['ELIM_PDF_INI'] or calc_fim != row['ELIM_PDF_FIM']:
+            status = "ERRO"
+            
+        return status, calc_ini, calc_fim
+        
+    except ValueError:
+        return f"OBSERVAÇÃO: '{prazo}'", None, None
+
+# --- SIDEBAR (Barra Lateral) ---
+
+with st.sidebar:
+    st.image("https://cdn-icons-png.flaticon.com/512/9543/9543962.png", width=60) # Ícone genérico
+    st.title("Painel de Controle")
+    st.markdown("---")
+    
+    st.subheader("1. Arquivos de Entrada")
+    file_excel = st.file_uploader("📂 Tabela Temporalidade (Excel)", type=["xlsx", "xls"], help="Colunas obrigatórias: COD, ESPEC, ELIM")
+    file_pdf = st.file_uploader("📄 Relatório Eliminação (PDF)", type=["pdf"])
+    
+    st.markdown("---")
+    st.caption("Desenvolvido para validação automática de editais de eliminação de documentos.")
+    st.caption("Versão 2.0 (Premium)")
+
+# --- ÁREA PRINCIPAL ---
+
+st.title("🛡️ Auditoria de Datas de Eliminação")
+st.markdown("#### Sistema de Validação Cruzada (PDF vs Temporalidade)")
+
+if not file_excel or not file_pdf:
+    # Estado Inicial (Sem arquivos)
+    st.info("👋 Bem-vindo! Para começar, faça o upload dos arquivos no menu lateral à esquerda.")
+    
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        st.markdown("### 1️⃣ Upload")
+        st.write("Carregue a tabela de regras e o PDF do edital.")
+    with col_b:
+        st.markdown("### 2️⃣ Processamento")
+        st.write("O sistema cruza códigos e calcula datas automaticamente.")
+    with col_c:
+        st.markdown("### 3️⃣ Relatório")
+        st.write("Baixe uma planilha contendo apenas as divergências encontradas.")
+
+else:
+    # Processamento
+    with st.status("Processando documentos...", expanded=True) as status:
+        # 1. Excel
+        st.write("Lendo Tabela de Temporalidade...")
+        try:
+            df_regras = pd.read_excel(file_excel)
+            cols_upper = [c.upper() for c in df_regras.columns]
+            df_regras.columns = cols_upper
+            if not all(col in df_regras.columns for col in ['COD', 'ESPEC', 'ELIM']):
+                st.error("O Excel precisa ter as colunas: COD, ESPEC, ELIM")
+                st.stop()
+        except Exception as e:
+            st.error(f"Erro no Excel: {e}")
+            st.stop()
+            
+        # 2. PDF
+        st.write("Extraindo dados do PDF (isso pode levar alguns segundos)...")
+        try:
+            df_pdf = extract_data_from_pdf(file_pdf)
+            if df_pdf.empty:
+                st.warning("Nenhum padrão de data reconhecido no PDF.")
+                st.stop()
+        except Exception as e:
+            st.error(f"Erro no PDF: {e}")
+            st.stop()
+
+        # 3. Análise
+        st.write("Validando datas e calculando divergências...")
+        resultados = []
+        erros_count = 0
+        
+        # Barra de progresso visual
+        prog_bar = st.progress(0)
+        total = len(df_pdf)
+        
+        for idx, row in df_pdf.iterrows():
+            status_calc, c_ini, c_fim = calcular_correto(row, df_regras)
+            
+            if status_calc != "OK":
+                erros_count += 1
+                resultados.append({
+                    'CÓDIGO': row['COD_PDF'],
+                    'ESPECIFICAÇÃO (PDF)': row['ESPEC_PDF'],
+                    'LIMITE INICIAL': row['LIMITE_INI'],
+                    'LIMITE FINAL': row['LIMITE_FIM'],
+                    'ELIM PDF': f"{row['ELIM_PDF_INI']} a {row['ELIM_PDF_FIM']}",
+                    'STATUS': status_calc,
+                    'DATA CORRETA': f"{c_ini} a {c_fim}" if c_ini else "N/A"
+                })
+            prog_bar.progress((idx + 1) / total)
+            
+        status.update(label="Análise concluída!", state="complete", expanded=False)
+
+    # --- DASHBOARD DE RESULTADOS ---
+    
+    st.divider()
+    
+    # KPIs (Métricas Principais)
+    kpi1, kpi2, kpi3 = st.columns(3)
+    
+    with kpi1:
+        st.metric("Documentos Analisados", f"{total}", delta="Processamento Completo")
+    
+    with kpi2:
+        if erros_count > 0:
+            st.metric("Inconsistências", f"{erros_count}", delta="-Atenção Requerida", delta_color="inverse")
+        else:
+            st.metric("Inconsistências", "0", delta="Perfeito", delta_color="normal")
+            
+    with kpi3:
+        taxa_sucesso = ((total - erros_count) / total) * 100
+        st.metric("Taxa de Precisão", f"{taxa_sucesso:.1f}%")
+
+    # Exibição dos Dados
+    if resultados:
+        st.subheader("⚠️ Detalhe das Divergências")
+        st.caption("Abaixo estão listados apenas os registros onde a data do PDF difere do cálculo esperado.")
+        
+        df_resultado = pd.DataFrame(resultados)
+        
+        # Colorir status
+        def color_status(val):
+            color = '#ffcdd2' if val == 'ERRO' else '#fff9c4'
+            return f'background-color: {color}'
+
+        st.dataframe(
+            df_resultado.style.applymap(color_status, subset=['STATUS']),
+            use_container_width=True,
+            hide_index=True
+        )
+        
+        # Área de Download
+        st.markdown("<br>", unsafe_allow_html=True)
+        col_download, col_vazia = st.columns([1, 2])
+        
+        with col_download:
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                df_resultado.to_excel(writer, index=False, sheet_name='Erros')
+                # Ajuste automático de colunas
+                worksheet = writer.sheets['Erros']
+                for i, col in enumerate(df_resultado.columns):
+                    column_len = max(df_resultado[col].astype(str).map(len).max(), len(col)) + 2
+                    worksheet.set_column(i, i, column_len)
+            
+            st.download_button(
+                label="📥 Baixar Relatório Corretivo (Excel)",
+                data=buffer,
+                file_name="Relatorio_Auditoria_Datas.xlsx",
+                mime="application/vnd.ms-excel",
+                type="primary" # Botão destacado
+            )
+            
+    else:
+        st.markdown("---")
+        st.success("✅ **Auditoria Aprovada:** Nenhuma divergência encontrada. Todas as datas de eliminação correspondem à tabela de temporalidade.")
+        st.balloons()
+
