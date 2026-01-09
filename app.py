@@ -18,7 +18,7 @@ st.markdown("""
     <style>
         /* Fundo principal mais suave */
         .stApp {
-            background-color: #f8f9fa;
+            background-color: #f3f4f6;
         }
         /* Estilo dos Cards de Métricas */
         div[data-testid="metric-container"] {
@@ -26,20 +26,29 @@ st.markdown("""
             padding: 20px;
             border-radius: 10px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-            border: 1px solid #e0e0e0;
+            border: 1px solid #d1d5db;
         }
         /* Estilo da Tabela */
         div[data-testid="stDataFrame"] {
             background-color: #ffffff;
             padding: 10px;
+            border: 1px solid #d1d5db;
             border-radius: 10px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            box-shadow: none;
         }
         /* Botão de Download em destaque */
         div.stButton > button {
             width: 100%;
             border-radius: 8px;
             font-weight: bold;
+            background-color: #2563eb;
+            border-color: #2563eb;
+            color: white;
+        }
+
+        div.stButton > button:hover {
+            background-color: #1e40af;
+            border-color: #1e40af;
         }
         /* Esconder menu padrão do Streamlit para ficar mais limpo */
         #MainMenu {visibility: hidden;}
@@ -197,10 +206,10 @@ else:
             cols_upper = [c.upper() for c in df_regras.columns]
             df_regras.columns = cols_upper
             if not all(col in df_regras.columns for col in ['COD', 'ESPEC', 'ELIM']):
-                st.error("O Excel precisa ter as colunas: COD, ESPEC, ELIM")
+                st.r("O Excel precisa ter as colunas: COD, ESPEC, ELIM")
                 st.stop()
         except Exception as e:
-            st.error(f"Erro no Excel: {e}")
+            st.r(f" no Excel: {e}")
             st.stop()
             
         # 2. PDF
@@ -211,13 +220,13 @@ else:
                 st.warning("Nenhum padrão de data reconhecido no PDF.")
                 st.stop()
         except Exception as e:
-            st.error(f"Erro no PDF: {e}")
+            st.r(f" no PDF: {e}")
             st.stop()
 
         # 3. Análise
         st.write("Validando datas e calculando divergências...")
         resultados = []
-        erros_count = 0
+        s_count = 0
         
         # Barra de progresso visual
         prog_bar = st.progress(0)
@@ -270,7 +279,7 @@ else:
         
         # Colorir status
         def color_status(val):
-            color = '#ffcdd2' if val == 'ERRO' else '#fff9c4'
+            color = '#fef2f2' if val == 'ERRO' else '#f9fafb'
             return f'background-color: {color}'
 
         st.dataframe(
@@ -303,6 +312,8 @@ else:
             
     else:
         st.markdown("---")
-        st.success("✅ **Auditoria Aprovada:** Nenhuma divergência encontrada. Todas as datas de eliminação correspondem à tabela de temporalidade.")
+        st.info("✅ **Auditoria Aprovada:** Nenhuma divergência encontrada. Todas as datas de eliminação correspondem à tabela de temporalidade.")
+
         st.balloons()
+
 
