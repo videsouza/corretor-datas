@@ -173,7 +173,7 @@ st.markdown("#### Sistema de Validação Cruzada (PDF vs Temporalidade)")
 
 if not file_excel or not file_pdf:
     # Estado Inicial (Sem arquivos)
-    st.info("👋 Bem-vindo! Para começar, faça o upload dos arquivos no menu lateral à esquerda.")
+    st.info("Para começar, faça o upload dos arquivos no menu lateral à esquerda.")
     
     col_a, col_b, col_c = st.columns(3)
     with col_a:
@@ -304,5 +304,6 @@ else:
         st.markdown("---")
         st.success("✅ **Auditoria Aprovada:** Nenhuma divergência encontrada. Todas as datas de eliminação correspondem à tabela de temporalidade.")
         st.balloons()
+
 
 
