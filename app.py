@@ -155,7 +155,7 @@ def calcular_correto(row, regras_df):
 # --- SIDEBAR (Barra Lateral) ---
 
 with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/9543/9543962.png", width=60) # Ícone genérico
+    # st.image("https://cdn-icons-png.flaticon.com/512/9543/9543962.png", width=60) # Ícone genérico
     st.title("Painel de Controle")
     st.markdown("---")
     
@@ -304,4 +304,5 @@ else:
         st.markdown("---")
         st.success("✅ **Auditoria Aprovada:** Nenhuma divergência encontrada. Todas as datas de eliminação correspondem à tabela de temporalidade.")
         st.balloons()
+
 
