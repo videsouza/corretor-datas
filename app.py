@@ -5,49 +5,109 @@ import re
 import io
 import time
 
-# --- CONFIGURAÇÃO DA PÁGINA (Deve ser o primeiro comando) ---
+# --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
     page_title="Corretor de Datas",
-   
+    page_icon="📅",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- ESTILIZAÇÃO CSS CUSTOMIZADA (PREMIUM LOOK) ---
+# --- ESTILIZAÇÃO CSS (PADRÃO GOV.BR / AZUL) ---
 st.markdown("""
     <style>
-        /* Fundo principal mais suave */
+        /* Importando fonte Open Sans (similar ao padrão) */
+        @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap');
+
+        html, body, [class*="css"] {
+            font-family: 'Open Sans', sans-serif;
+        }
+
+        /* Fundo principal limpo */
         .stApp {
             background-color: #f8f9fa;
         }
-        /* Estilo dos Cards de Métricas */
+
+        /* Títulos em Azul Escuro Institucional */
+        h1, h2, h3, h4 {
+            color: #071D41 !important;
+            font-weight: 700;
+        }
+        
+        /* Ajuste da cor do texto padrão */
+        p, div, label {
+            color: #333333;
+        }
+
+        /* SIDEBAR */
+        section[data-testid="stSidebar"] {
+            background-color: #ffffff;
+            border-right: 1px solid #e0e0e0;
+        }
+        section[data-testid="stSidebar"] h1 {
+            color: #1351B4 !important; /* Azul mais vivo no sidebar */
+            font-size: 1.5rem;
+        }
+
+        /* CARDS DE MÉTRICAS (KPIs) */
         div[data-testid="metric-container"] {
             background-color: #ffffff;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            padding: 15px 20px;
+            border-radius: 4px;
             border: 1px solid #e0e0e0;
+            border-left: 5px solid #1351B4; /* Borda azul lateral */
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
-        /* Estilo da Tabela */
+        div[data-testid="metric-container"] label {
+            color: #071D41; /* Label do KPI */
+            font-weight: 600;
+        }
+
+        /* TABELA DE DADOS */
         div[data-testid="stDataFrame"] {
             background-color: #ffffff;
-            padding: 10px;
-            border-radius: 10px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
         }
-        /* Botão de Download em destaque */
+        /* Cabeçalho da tabela em Azul */
+        thead tr th:first-child {display:none}
+        tbody th {display:none}
+        
+        /* BOTÕES */
+        /* Botão Primário (Upload e Download) */
         div.stButton > button {
-            width: 100%;
-            border-radius: 8px;
-            font-weight: bold;
+            background-color: #1351B4;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-weight: 600;
+            padding: 0.5rem 1rem;
+            transition: all 0.3s;
         }
-        /* Esconder menu padrão do Streamlit para ficar mais limpo */
+        div.stButton > button:hover {
+            background-color: #071D41;
+            color: #ffffff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        
+        /* STATUS E MENSAGENS */
+        .stAlert {
+            border-radius: 4px;
+        }
+
+        /* FOOTER E MENU */
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
+        
+        /* Divisória */
+        hr {
+            border-color: #1351B4;
+            opacity: 0.2;
+        }
     </style>
 """, unsafe_allow_html=True)
 
-# --- FUNÇÕES DE LÓGICA (Mantidas do original) ---
+# --- FUNÇÕES DE LÓGICA (Mantidas intactas) ---
 
 def extract_data_from_pdf(pdf_file):
     """Extrai dados do PDF usando a lógica de regex fornecida."""
@@ -132,7 +192,6 @@ def calcular_correto(row, regras_df):
                 break
         if regra_selecionada is None:
              regra_selecionada = regras_filtradas.iloc[0]
-             # Marcador silencioso, o status informará se houver erro
     else:
         regra_selecionada = regras_filtradas.iloc[0]
 
@@ -155,7 +214,6 @@ def calcular_correto(row, regras_df):
 # --- SIDEBAR (Barra Lateral) ---
 
 with st.sidebar:
-    # st.image("https://cdn-icons-png.flaticon.com/512/9543/9543962.png", width=60) # Ícone genérico
     st.title("Painel de Controle")
     st.markdown("---")
     
@@ -164,27 +222,28 @@ with st.sidebar:
     file_pdf = st.file_uploader("📄 Relatório Eliminação (PDF)", type=["pdf"])
     
     st.markdown("---")
-    
+    st.caption("Sistema de Auditoria de Datas © 2026")
 
 # --- ÁREA PRINCIPAL ---
 
 st.title("Correção de datas de eliminação")
 st.markdown("#### Sistema de Validação Cruzada (PDF vs Temporalidade)")
+st.markdown("---")
 
 if not file_excel or not file_pdf:
     # Estado Inicial (Sem arquivos)
-    st.info("Para começar, faça o upload dos arquivos no menu lateral à esquerda.")
+    st.info("Para iniciar a auditoria, realize o upload dos documentos no menu lateral.")
     
     col_a, col_b, col_c = st.columns(3)
     with col_a:
         st.markdown("### 1️⃣ Upload")
-        st.write("Carregue a tabela de regras e o PDF do edital.")
+        st.write("Carregue a tabela de temporalidade e o edital em PDF.")
     with col_b:
         st.markdown("### 2️⃣ Processamento")
         st.write("O sistema cruza códigos e calcula datas automaticamente.")
     with col_c:
         st.markdown("### 3️⃣ Relatório")
-        st.write("Baixe uma planilha contendo apenas as divergências encontradas.")
+        st.write("Gera planilha apenas com as divergências encontradas.")
 
 else:
     # Processamento
@@ -203,7 +262,7 @@ else:
             st.stop()
             
         # 2. PDF
-        st.write("Extraindo dados do PDF (isso pode levar alguns segundos)...")
+        st.write("Extraindo dados do PDF...")
         try:
             df_pdf = extract_data_from_pdf(file_pdf)
             if df_pdf.empty:
@@ -218,7 +277,6 @@ else:
         resultados = []
         erros_count = 0
         
-        # Barra de progresso visual
         prog_bar = st.progress(0)
         total = len(df_pdf)
         
@@ -238,13 +296,13 @@ else:
                 })
             prog_bar.progress((idx + 1) / total)
             
-        status.update(label="Análise concluída!", state="complete", expanded=False)
+        status.update(label="Análise concluída com sucesso!", state="complete", expanded=False)
 
     # --- DASHBOARD DE RESULTADOS ---
     
     st.divider()
     
-    # KPIs (Métricas Principais)
+    # KPIs
     kpi1, kpi2, kpi3 = st.columns(3)
     
     with kpi1:
@@ -263,14 +321,14 @@ else:
     # Exibição dos Dados
     if resultados:
         st.subheader("⚠️ Detalhe das Divergências")
-        st.caption("Abaixo estão listados apenas os registros onde a data do PDF difere do cálculo esperado.")
+        st.caption("Registros onde a data do edital difere do cálculo da temporalidade.")
         
         df_resultado = pd.DataFrame(resultados)
         
-        # Colorir status
+        # Colorir status (Fundo suave para erros)
         def color_status(val):
             color = '#ffcdd2' if val == 'ERRO' else '#fff9c4'
-            return f'background-color: {color}'
+            return f'background-color: {color}; color: black;'
 
         st.dataframe(
             df_resultado.style.applymap(color_status, subset=['STATUS']),
@@ -285,25 +343,21 @@ else:
         with col_download:
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                df_resultado.to_excel(writer, index=False, sheet_name='Erros')
-                # Ajuste automático de colunas
-                worksheet = writer.sheets['Erros']
+                df_resultado.to_excel(writer, index=False, sheet_name='Relatorio_Auditoria')
+                worksheet = writer.sheets['Relatorio_Auditoria']
                 for i, col in enumerate(df_resultado.columns):
                     column_len = max(df_resultado[col].astype(str).map(len).max(), len(col)) + 2
                     worksheet.set_column(i, i, column_len)
             
             st.download_button(
-                label="📥 Baixar Relatório Corretivo (Excel)",
+                label="📥 Baixar Relatório de Divergências (.xlsx)",
                 data=buffer,
                 file_name="Relatorio_Auditoria_Datas.xlsx",
                 mime="application/vnd.ms-excel",
-                type="primary" # Botão destacado
+                type="primary"
             )
             
     else:
         st.markdown("---")
-        st.success("✅ **Auditoria Aprovada:** Nenhuma divergência encontrada. Todas as datas de eliminação correspondem à tabela de temporalidade.")
+        st.success("✅ **Auditoria Aprovada:** Nenhuma divergência encontrada. Todas as datas estão em conformidade.")
         st.balloons()
-
-
-
